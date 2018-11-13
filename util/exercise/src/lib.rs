@@ -197,19 +197,31 @@ pub fn generate_property_body(property: &str) -> String {
 fn into_literal(item: &Value, use_maplit: bool) -> Result<String> {
     use std::string;
     use Value::*;
+
     Ok(match item {
         Null => string::String::from("None"),
+
         String(s) => format!("\"{}\"", s),
+
         Number(_) | Bool(_) => format!("{}", item),
+
         Array(vs) => {
             let mut items = Vec::with_capacity(vs.len());
+
             for im in vs.iter() {
                 items.push(into_literal(im, use_maplit)?);
             }
+
             format!("vec![{}]", items.join(", "))
         }
+
         Object(m) => {
+            if m.len() == 1 {
+                return Ok(into_literal(m.values().nth(0).unwrap(), use_maplit)?);
+            }
+
             let mut kvs = Vec::with_capacity(m.len());
+
             for (key, value) in m.iter() {
                 if use_maplit {
                     kvs.push(format!("\"{}\"=>{}", key, into_literal(value, use_maplit)?));
@@ -221,6 +233,7 @@ fn into_literal(item: &Value, use_maplit: bool) -> Result<String> {
                     ));
                 }
             }
+
             if use_maplit {
                 format!("hashmap!{{{}}}", kvs.join(","))
             } else {
@@ -233,9 +246,51 @@ fn into_literal(item: &Value, use_maplit: bool) -> Result<String> {
     })
 }
 
+fn parse_input(input: &Value, use_maplit: bool) -> Result<String> {
+    let input_parsed = match input {
+        Value::Object(input_map) => {
+            if input_map.len() == 1 {
+                into_literal(input, use_maplit)?
+            } else {
+                format!(
+                    "({},)",
+                    input_map
+                        .values()
+                        // FIXME: For some reason cannot use the '?' operator here with the following error: cannot use the `?` operator in a function that returns `std::string::String`
+                        .map(|input_element| into_literal(input_element, use_maplit).unwrap())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+        }
+
+        Value::Array(input_vec) => {
+            if input_vec.len() == 1 {
+                into_literal(input, use_maplit)?
+            } else {
+                format!(
+                    "({},)",
+                    input_vec
+                        .iter()
+                        // FIXME: For some reason cannot use the '?' operator here with the following error: cannot use the `?` operator in a function that returns `std::string::String`
+                        .map(|input_element| into_literal(input_element, use_maplit).unwrap())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+        }
+
+        _ => into_literal(input, use_maplit)?,
+    };
+
+    Ok(input_parsed)
+}
+
 pub fn generate_test_function(case: &Value, use_maplit: bool) -> Result<String> {
     let description = get!(case, "description", as_str);
+
     let property = get!(case, "property", as_str);
+
     let comments = if let Some(comments) = case.get("comments") {
         use Value::*;
         match comments {
@@ -257,7 +312,10 @@ pub fn generate_test_function(case: &Value, use_maplit: bool) -> Result<String> 
         "".to_string()
     };
 
-    let input = into_literal(get!(case, "input"), use_maplit)?;
+    // let input = into_literal(get!(case, "input"), use_maplit)?;
+
+    let input = parse_input(get!(case, "input"), use_maplit)?;
+
     let expected = into_literal(get!(case, "expected"), use_maplit)?;
 
     Ok(format!(
