@@ -1,0 +1,6 @@
+[dependencies]
+maplit = "1.0.1"
+
+[package]
+name = "sgf-parsing"
+version = "1.0.0"
